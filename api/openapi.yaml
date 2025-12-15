@@ -1,0 +1,84 @@
+openapi: 3.0.3
+info:
+  title: TruthWeave Oracle API
+  version: 2.0.0
+  description: API for the World Oracle (News, RAG, Gaia Map, Ads).
+paths:
+  /api/v1/news/feed:
+    get:
+      summary: Get the mixed news and ads feed (The Zipper).
+      responses:
+        '200':
+          description: A list of articles and ads.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: [article, ad]
+                    content:
+                      oneOf:
+                        - $ref: '#/components/schemas/Article'
+                        - $ref: '#/components/schemas/Ad'
+  /api/v1/oracle/gaia-map:
+    get:
+      summary: Get data points for the 3D globe.
+      responses:
+        '200':
+          description: List of points or clusters.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GaiaPoint'
+  /api/v1/chat:
+    post:
+      summary: RAG Chat with the Deep Oracle.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+      responses:
+         '200':
+           description: Oracle answer.
+
+components:
+  schemas:
+    Article:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        truth_score:
+          type: number
+    Ad:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        target_url:
+          type: string
+    GaiaPoint:
+      type: object
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+        emo:
+          type: string
+        int:
+          type: number

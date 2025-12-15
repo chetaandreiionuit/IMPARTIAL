@@ -1,0 +1,81 @@
+type Article {
+    url
+    title
+    content
+    published_at
+    crawled_at
+    source
+    mentioned_entities
+    sentiment
+    arweave_tx_id
+}
+
+type Source {
+    domain
+    trust_score
+    articles
+}
+
+type Entity {
+    name
+    type
+    appears_in
+}
+
+type Sentiment {
+    score
+    magnitude
+}
+
+type Event {
+    event.id
+    event.title
+    event.summary
+    event.timestamp
+    event.caused_by
+    event.triggered
+    event.topic_cluster
+    event.chain_depth
+}
+
+type Narrative {
+    narrative.id
+    narrative.name
+    narrative.root_event
+    narrative.status
+}
+
+url: string @index(hash) @upsert .
+title: string @index(term, fulltext) .
+content: string .
+published_at: datetime @index(hour) .
+crawled_at: datetime .
+source: uid @reverse .
+mentioned_entities: [uid] @reverse .
+sentiment: uid .
+arweave_tx_id: string @index(exact) .
+
+domain: string @index(exact) @upsert .
+trust_score: float .
+articles: [uid] .
+
+name: string @index(term, trigram) @upsert .
+type: string @index(exact) .
+appears_in: [uid] .
+
+score: float .
+magnitude: float .
+
+event.id: string @index(exact) .
+event.title: string @index(fulltext) .
+event.summary: string .
+event.timestamp: datetime @index(hour) .
+event.caused_by: [uid] @reverse .
+event.triggered: [uid] @reverse .
+event.topic_cluster: uid .
+event.chain_depth: int .
+
+narrative.id: string @index(exact) .
+narrative.name: string @index(term) .
+narrative.root_event: uid .
+narrative.status: string .

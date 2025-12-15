@@ -1,0 +1,19 @@
+{
+  "articles": [
+    {
+      "id": "uuid",
+      "headline": "Neutral Title",
+      "summary": "Short summary...",
+      "truth_score": 0.95,
+      "bias_rating": "Neutral",
+      "published_at": "2023-10-27T10:00:00Z"
+    }
+  ],
+  "chat_response": {
+    "answer": "Based on the reports...",
+    "citations": [
+      "uuid-1",
+      "uuid-2"
+    ]
+  }
+}

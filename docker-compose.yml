@@ -1,0 +1,49 @@
+version: '3.5'
+
+services:
+  # 1. PostgreSQL cu pgvector pentru Vector Search
+  postgres:
+    image: ankane/pgvector:latest
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: truthweave
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. Temporal Server (Lite version for Dev)
+  temporal:
+    image: temporalio/auto-setup:latest
+    ports:
+      - "7233:7233" # gRPC port
+      - "8233:8233" # UI port
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=user
+      - POSTGRES_PWD=password
+      - POSTGRES_SEEDS=postgres
+    depends_on:
+      - postgres
+
+  # 3. Dgraph (Graph Database)
+  dgraph_zero:
+    image: dgraph/dgraph:latest
+    command: dgraph zero --my=dgraph_zero:5080
+    ports:
+      - "5080:5080"
+      - "6080:6080"
+
+  dgraph_alpha:
+    image: dgraph/dgraph:latest
+    command: dgraph alpha --my=dgraph_alpha:7080 --zero=dgraph_zero:5080 --security "whitelist=0.0.0.0/0"
+    ports:
+      - "8082:8080" # HTTP Port
+      - "9080:9080" # gRPC Port
+    depends_on:
+      - dgraph_zero
+
+volumes:
+  postgres_data:

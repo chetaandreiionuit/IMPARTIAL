@@ -1,0 +1,43 @@
+type Article {
+    id: ID!
+    url: string @index(hash) @upsert .
+    title: string @index(term, fulltext) .
+    content: string .
+    published_at: datetime @index(hour) .
+    crawled_at: datetime .
+    source: Source .
+    topics: [Topic] .
+    mentioned_entities: [Entity] .
+    sentiment: Sentiment .
+    arweave_tx_id: string @index(exact) .
+    
+    # Oracle Genesis Fields
+    location: geo @index(geo) .
+    global_emotion: string @index(exact) .
+    caused_by: [Article] .
+    triggered: [Article] @reverse .
+}
+
+type Source {
+    id: ID!
+    domain: string @index(exact) @upsert .
+    trust_score: float .
+    articles: [Article] @reverse .
+}
+
+type Entity {
+    id: ID!
+    name: string @index(term, trigram) @upsert .
+    type: string @index(exact) . # Person, Location, Organization
+    appears_in: [Article] @reverse .
+}
+
+type Sentiment {
+    score: float .
+    magnitude: float .
+}
+
+type Topic {
+    id: ID!
+    name: string @index(term) .
+}
