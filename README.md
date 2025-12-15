@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🌐 TRUTHWEAVE: The Global Impartial Oracle
 > **Codename:** IMPARTIAL / ANTIGRAVITY  
 > **Version:** 2.6 (Autonomous Intelligence Era)
@@ -172,3 +173,6 @@ Toate răspunsurile sunt JSON standardizat.
 ---
 
 > **Note finale:** Acest proiect reprezintă stadiul artei în ingineria software "Agentic", fiind scris și validat în proporție de 99% de agenți AI autonomi sub supraveghere umană.
+=======
+# IMPARTIAL
+>>>>>>> ede658022f65a3ae0da793a7fd81f4aef3bea353
