@@ -41,3 +41,18 @@ type Topic {
     id: ID!
     name: string @index(term) .
 }
+
+type Event {
+    event.id: string @index(exact).
+    event.summary: string @index(term).
+    event.timestamp: datetime @index(hour).
+    
+    # Muchiile critice pentru graf
+    event.caused_by: [uid] @reverse. 
+    event.triggered: [uid] @reverse.
+    
+    # Metadatele generate de Gemini
+    event.trust_score: float.       # Bridging Score
+    event.emotional_intensity: float. 
+    event.narrative_cluster: string @index(hash). # ex: "Eastern_Crisis_2025"
+}

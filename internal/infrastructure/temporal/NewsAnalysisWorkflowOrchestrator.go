@@ -11,8 +11,8 @@ import (
 	"github.com/yourorg/truthweave/internal/domain/article"
 
 	"github.com/yourorg/truthweave/internal/infrastructure/dgraph"
+	"github.com/yourorg/truthweave/internal/infrastructure/gdelt"
 	"github.com/yourorg/truthweave/internal/infrastructure/gemini"
-	"github.com/yourorg/truthweave/internal/infrastructure/newsapi"
 	"github.com/yourorg/truthweave/internal/infrastructure/postgres"
 )
 
@@ -23,7 +23,7 @@ type NewsProcessingActivities struct {
 	ArtificialIntelligence *gemini.GoogleGeminiArtificialIntelligenceAdapter
 	KnowledgeGraph         *dgraph.DgraphKnowledgeGraphRepository
 	Database               *postgres.PostgresNewsArticleRepository
-	NewsFetcher            *newsapi.NewsAPIAdapter // Noul "Corespondent"
+	NewsFetcher            *gdelt.GDELTAdapter // Replaced NewsAPI with GDELT V2
 	DeduplicationThreshold float64
 }
 
@@ -34,11 +34,9 @@ type SimilarityCheckResult struct {
 }
 
 // [RO] Activitate: Colectare Știri Globale (Reală)
+// Acum folosește GDELT Project V2 pentru a detecta evenimente cu impact major (|tone| > 5).
 func (activities *NewsProcessingActivities) FetchLatestGlobalNewsActivity(ctx context.Context) ([]string, error) {
-	// Apelăm adaptorul NewsAPI
-	// Căutăm știri generale sau despre conflicte/politică ("politics", "world").
-	// Putem face API call-ul mai complex.
-	return activities.NewsFetcher.FetchGlobalHeadlines(ctx, "world")
+	return activities.NewsFetcher.FetchHighImpactEvents(ctx)
 }
 
 // [RO] Activitate 1: Extragere Conținut (Scraping)

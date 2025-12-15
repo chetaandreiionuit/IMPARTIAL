@@ -71,7 +71,8 @@ fun CausalFeedRow(
         ) {
             when (item) {
                 is FeedItem.ArticleItem -> ArticleCard(item, isChild)
-                is FeedItem.AdItem -> AdCard(item)
+                // AdItem removed per Editorial Fintech Blueprint
+                else -> {} 
             }
         }
     }
@@ -141,26 +142,5 @@ fun ArticleCard(item: FeedItem.ArticleItem, isChild: Boolean) {
                 )
             }
         }
-    }
-}
-
-@Composable
-fun AdCard(item: FeedItem.AdItem) {
-    GlassCard(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-         Column {
-             Text(
-                 text = "SPONSORED",
-                 style = MaterialTheme.typography.labelSmall,
-                 color = TruthColors.WarningYellow
-             )
-             Spacer(modifier = Modifier.height(4.dp))
-             Text(
-                 text = item.title,
-                 style = MaterialTheme.typography.titleMedium,
-                 color = TruthColors.TextPrimary
-             )
-         }
     }
 }

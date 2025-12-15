@@ -237,3 +237,72 @@ func (repo *DgraphKnowledgeGraphRepository) CreateCausalEdge(executionContext co
 
 	return nil
 }
+
+// [RO] Upsert Causal Event (Part 2 Refactoring)
+// Salvează rezultatul analizei cauzale (nodul + scorurile).
+func (repo *DgraphKnowledgeGraphRepository) UpsertCausalEvent(ctx context.Context, eventID string, timestamp time.Time, summary string, score float64) error {
+	type EventDTO struct {
+		Uid        string   `json:"uid"`
+		DType      []string `json:"dgraph.type,omitempty"`
+		EventID    string   `json:"event.id"`
+		Summary    string   `json:"event.summary"`
+		Timestamp  string   `json:"event.timestamp"`
+		TrustScore float64  `json:"event.trust_score"`
+	}
+
+	// 1. Căutăm nodul existent
+	query := `query q($id: string) {
+		ev(func: eq(event.id, $id)) {
+			uid
+		}
+	}`
+
+	transaction := repo.graphClient.NewTxn()
+	defer transaction.Discard(ctx)
+
+	resp, err := transaction.QueryWithVars(ctx, query, map[string]string{"$id": eventID})
+	if err != nil {
+		return fmt.Errorf("failed to query event: %w", err)
+	}
+
+	var root struct {
+		Ev []struct {
+			Uid string `json:"uid"`
+		} `json:"ev"`
+	}
+	if err := json.Unmarshal(resp.Json, &root); err != nil {
+		return err
+	}
+
+	uid := "_:new"
+	if len(root.Ev) > 0 {
+		uid = root.Ev[0].Uid
+	}
+
+	// 2. Facem Upsert
+	dto := EventDTO{
+		Uid:        uid,
+		DType:      []string{"Event"},
+		EventID:    eventID,
+		Summary:    summary,
+		Timestamp:  timestamp.Format(time.RFC3339),
+		TrustScore: score,
+	}
+
+	jsonData, err := json.Marshal(dto)
+	if err != nil {
+		return err
+	}
+
+	mutation := &api.Mutation{
+		SetJson:   jsonData,
+		CommitNow: true,
+	}
+
+	_, err = transaction.Mutate(ctx, mutation)
+	if err != nil {
+		return fmt.Errorf("failed to upsert causal event: %w", err)
+	}
+
+	return nil
+}

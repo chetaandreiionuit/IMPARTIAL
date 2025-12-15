@@ -14,8 +14,8 @@ import (
 
 	// "github.com/yourorg/truthweave/internal/infrastructure/arweave"
 	"github.com/yourorg/truthweave/internal/infrastructure/dgraph"
+	"github.com/yourorg/truthweave/internal/infrastructure/gdelt"
 	"github.com/yourorg/truthweave/internal/infrastructure/gemini"
-	"github.com/yourorg/truthweave/internal/infrastructure/newsapi"
 	"github.com/yourorg/truthweave/internal/infrastructure/postgres"
 
 	// "github.com/yourorg/truthweave/internal/infrastructure/solana"
@@ -58,23 +58,8 @@ func main() {
 		log.Fatalf("Eroare AI: %v", err)
 	}
 
-	// NewsAPI
-	newsClient := newsapi.NewNewsAPIAdapter(cfg.NewsAPIKey)
-
-	// Blockchain (Arweave & Solana) - DEZACTIVAT TEMPORAR PENTRU DEMO
-	// Aici inițializăm adaptoarele reale. Dacă lipsesc cheile, worker-ul s-ar putea să crape la runtime.
-	// Pentru demo, folosim inițializare "best effort" sau panicăm dacă e critic.
-	// arweaveAdapter, _ := arweave.NewArweavePermanentStorageAdapter(cfg.ArweaveKeyPath, cfg.ArweaveGateway)
-
-	// Solana necesită cheie privată. Dacă nu e în config, punem un string gol și adaptorul va returna eroare la constructor?
-	// Constructorul returnează eroare. Vom gestiona eroarea.
-	/*
-		solanaAdapter, err := solana.NewSolanaBlockchainVerificationAdapter(cfg.SolanaPrivateKey, cfg.SolanaRPC)
-		if err != nil {
-			log.Printf("Avertisment: Modulul Solana nu a putut fi inițializat (cheie lipsă?): %v", err)
-			// Putem continua, dar activitatea de ancorare va eșua (ceea ce e acceptabil pentru testare locală fară chei reale).
-		}
-	*/
+	// GDELT (Project V2 Source)
+	gdeltClient := gdelt.NewGDELTAdapter()
 
 	// [RO] 3. Conectare la Temporal Server
 	tClient, err := client.Dial(client.Options{
@@ -94,15 +79,15 @@ func main() {
 		ArtificialIntelligence: aiClient,
 		KnowledgeGraph:         dgraphRepo,
 		Database:               pgRepo,
-		NewsFetcher:            newsClient,
+		NewsFetcher:            gdeltClient,
 		DeduplicationThreshold: cfg.DeduplicationThreshold,
-		// ArweaveArchiver:        arweaveAdapter,
-		// BlockchainNotary:       solanaAdapter,
 	}
 
 	// Înregistrăm "Rețetele" (Flow-ul și Activitățile)
 	w.RegisterWorkflow(temporal.OrchestrateNewsAnalysisWorkflow)
 	w.RegisterWorkflow(temporal.GlobalNewsIngestionWorkflow)
+	w.RegisterWorkflow(temporal.CausalChainWorkflow)    // [RO] New: Causal Loop Engine
+	w.RegisterWorkflow(temporal.RebalanceGraphWorkflow) // [RO] New: Retroactive Causality
 	w.RegisterActivity(activities)
 
 	log.Println("👷 Muncitorul TruthWeave este gata de treabă! Aștept comenzi...")

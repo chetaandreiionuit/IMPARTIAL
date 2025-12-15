@@ -28,19 +28,13 @@ fun NewsFeedScreen(
 ) {
     val pagingItems = viewModel.pagingDataFlow.collectAsLazyPagingItems()
 
-    // [RO] Antigravity Background: Gradient spațial adânc
+    // [RO] Antigravity Background: Gunmetal (Blueprint Requirement)
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF0B1021), // Deep Space Blue
-                        Color(0xFF2B3A67)  // Nebula Violet
-                    )
-                )
-            )
+            .background(Color(0xFF121212)) // Gunmetal
     ) {
+
         Scaffold(
             // Facem TopBar transparent pentru a vedea fundalul
             containerColor = Color.Transparent,
@@ -154,32 +148,6 @@ fun ArticleGlassPanel(item: FeedItem.ArticleItem) {
     }
 }
 
-@Composable
-fun AdGlassPanel(item: FeedItem.AdItem) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .glassBackground(blurRadius = 10.dp) // Mai puțin blur pentru reclame
-            .border(1.dp, Color(0xFFFFD700).copy(alpha = 0.5f), MaterialTheme.shapes.medium) // Bordura aurie
-            .padding(16.dp)
-    ) {
-        Column {
-            Text(
-                "SPONSORED", 
-                style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFFFFD700))
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                item.title, 
-                style = MaterialTheme.typography.titleMedium.copy(color = Color.White)
-            )
-            Text(
-                item.body, 
-                style = MaterialTheme.typography.bodySmall.copy(color = Color.LightGray)
-            )
-        }
-    }
-}
 
 // Helpers
 fun getTruthColor(score: Double): Color {

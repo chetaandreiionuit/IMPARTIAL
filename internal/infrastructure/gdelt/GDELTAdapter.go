@@ -1,118 +1,177 @@
 package gdelt
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/csv"
 	"fmt"
+	"io"
+	"math"
 	"net/http"
-	"net/url"
+	"strconv"
+	"strings"
 	"time"
 )
 
-// [RO] Constante GDELT
-const (
-	GdeltApiBaseURL = "https://api.gdeltproject.org/api/v2/doc/doc"
-)
-
-// [RO] Structura Articol GDELT (conform specificației API DOC 2.0)
-type GdeltArticle struct {
-	URL           string `json:"url"`
-	Title         string `json:"title"`
-	Seendate      string `json:"seendate"` // Format: YYYYMMDDHHMMSS
-	SourceCountry string `json:"sourcecountry"`
-	Language      string `json:"language"`
-	SocialImage   string `json:"socialimage"`
-	Domain        string `json:"domain"`
-}
-
-// [RO] Wrapper Răspuns GDELT
-type GdeltApiResponse struct {
-	Articles []GdeltArticle `json:"articles"`
-}
-
-// [RO] Filtre de Interogare
-type GdeltQueryFilters struct {
-	ToneAbsGreaterThan float64 // toneabs>5
-	ImageTag           string  // imagetag:"tank"
-	SourceLang         string  // sourcelang:rum
-	Theme              string  // theme:CYBER_ATTACK
-	Keywords           string  // "NATO Russia"
-}
-
-// [RO] Adaptor GDELT
+// GDELTAdapter handles fetching and stream-processing GDELT V2 Event CSVs.
 type GDELTAdapter struct {
-	client *http.Client
+	httpClient *http.Client
 }
 
 func NewGDELTAdapter() *GDELTAdapter {
 	return &GDELTAdapter{
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient: &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
-// [RO] Construiește URL-ul de interogare
-func (a *GDELTAdapter) BuildGDELTQuery(filters GdeltQueryFilters) string {
-	// Query de bază
-	queryParts := ""
-
-	if filters.Keywords != "" {
-		queryParts += filters.Keywords
-	}
-
-	if filters.ToneAbsGreaterThan > 0 {
-		queryParts += fmt.Sprintf(" toneabs>%2.f", filters.ToneAbsGreaterThan)
-	}
-
-	if filters.ImageTag != "" {
-		queryParts += fmt.Sprintf(" imagetag:%q", filters.ImageTag)
-	}
-
-	if filters.SourceLang != "" {
-		queryParts += fmt.Sprintf(" sourcelang:%s", filters.SourceLang)
-	}
-
-	if filters.Theme != "" {
-		queryParts += fmt.Sprintf(" theme:%s", filters.Theme)
-	}
-
-	// Parametrii standard: JSON, ArtList, MaxRecords, Timespan
-	// Timespan 15min pentru a prinde fluxul curent
-	params := url.Values{}
-	params.Add("query", queryParts)
-	params.Add("mode", "artlist")
-	params.Add("format", "json")
-	params.Add("maxrecords", "50")  // Limităm la 50 per batch
-	params.Add("timespan", "15min") // Doar ultimele 15 minute
-
-	return fmt.Sprintf("%s?%s", GdeltApiBaseURL, params.Encode())
-}
-
-// [RO] Fetch Articles
-func (a *GDELTAdapter) FetchLatestArticles(ctx context.Context, filters GdeltQueryFilters) ([]GdeltArticle, error) {
-	fullURL := a.BuildGDELTQuery(filters)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
+// FetchHighImpactEvents downloads the latest GDELT Events CSV updates,
+// filters by Tone (Impact > 5.0), and returns the Source URLs.
+// Uses Go Iterators pattern (streaming processing) to minimize RAM usage.
+func (adapter *GDELTAdapter) FetchHighImpactEvents(ctx context.Context) ([]string, error) {
+	// 1. Get the URL of the latest update zip
+	fileURL, err := adapter.getLastUpdateURL(ctx)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("[GDELT] Downloading update: %s\n", fileURL)
 
-	resp, err := a.client.Do(req)
+	// 2. Download ZIP Stream
+	req, err := http.NewRequestWithContext(ctx, "GET", fileURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := adapter.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GDELT API error: %d", resp.StatusCode)
+		return nil, fmt.Errorf("GDELT download failed: %d", resp.StatusCode)
 	}
 
-	var result GdeltApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		// Uneori GDELT returneaza erori ciudate daca nu sunt rezultate, dar format=json ar trebui sa fie consistent.
+	// Read the whole zip into memory? GDELT files are ~10MB compressed, okay for RAM.
+	// For true streaming of ZIPs without reading full body, we need standard zip not supporting seek?
+	// Go's zip.NewReader requires ReaderAt (seekable).
+	// To strictly follow "Stream CSV" without loading ZIP to RAM, we'd need a custom unzip stream.
+	// However, 5-10MB is negligible. We'll read the body buffer.
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return nil, err
 	}
 
-	return result.Articles, nil
+	zipReader, err := zip.NewReader(bytes.NewReader(bodyBytes), int64(len(bodyBytes)))
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Process CSV inside ZIP
+	var highImpactURLs []string
+
+	// Usually there is only one .export.CSV file in the zip
+	for _, zipFile := range zipReader.File {
+		if !strings.HasSuffix(zipFile.Name, ".csv") {
+			continue
+		}
+
+		f, err := zipFile.Open()
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+
+		csvReader := csv.NewReader(f)
+		csvReader.Comma = '\t'         // GDELT uses Tab Separated Values
+		csvReader.FieldsPerRecord = -1 // Variable fields in some cases
+
+		// Stream Processing Line-by-Line
+		for {
+			record, err := csvReader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				continue // Skip malformed lines
+			}
+
+			// GDELT 2.0 Columns of Interest (Approximate indices):
+			// 34: AvgTone (float)
+			// 60: SourceURL (Last One) - Let's assume last one for safety or index 57/60 depending on version.
+			// Actually GDELT 2.0 has 58 columns usually. SourceURL is last.
+
+			if len(record) < 58 {
+				continue
+			}
+
+			// Parse Tone (Index 34 in GDELT 2.0)
+			toneStr := record[34]
+			sourceURL := record[len(record)-1] // URL is always last
+
+			tone, err := strconv.ParseFloat(toneStr, 64)
+			if err != nil {
+				continue
+			}
+
+			// FILTER: |Tone| > 5.0 (High Emotional Impact)
+			if math.Abs(tone) > 5.0 {
+				// Cleanup URL
+				url := strings.TrimSpace(sourceURL)
+				if url != "" && strings.HasPrefix(url, "http") {
+					highImpactURLs = append(highImpactURLs, url)
+				}
+			}
+		}
+	}
+
+	// Deduplicate locally
+	return uniqueStrings(highImpactURLs), nil
+}
+
+func (adapter *GDELTAdapter) getLastUpdateURL(ctx context.Context) (string, error) {
+	// GDELT 2.0 Master List (Updated every 15 mins)
+	const updateListURL = "http://data.gdeltproject.org/gdeltv2/lastupdate.txt"
+
+	req, err := http.NewRequestWithContext(ctx, "GET", updateListURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := adapter.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	// Format:
+	// <FileSize> <MD5> <URL>
+	// We want the first line (latest English export)
+	lines := strings.Split(string(body), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 {
+			url := fields[2]
+			if strings.Contains(url, ".export.CSV.zip") {
+				return url, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no export csv found in lastupdate.txt")
+}
+
+func uniqueStrings(input []string) []string {
+	keys := make(map[string]bool)
+	list := []string{}
+	for _, entry := range input {
+		if _, value := keys[entry]; !value {
+			keys[entry] = true
+			list = append(list, entry)
+		}
+	}
+	return list
 }

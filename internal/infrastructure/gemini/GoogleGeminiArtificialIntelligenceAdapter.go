@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/generative-ai-go/genai"
 	"github.com/yourorg/truthweave/internal/domain/article"
+	"github.com/yourorg/truthweave/internal/domain/causality"
 	"google.golang.org/api/option"
 )
 
@@ -235,6 +236,47 @@ Output Schema:
 	var result CausalityAnalysisResult
 	if err := json.Unmarshal([]byte(respText), &result); err != nil {
 		return nil, fmt.Errorf("failed to parse causality JSON: %w. Raw: %s", err, respText)
+	}
+
+	return &result, nil
+}
+
+// AnalyzeCausality performs the comprehensive Causal Oracle analysis (Tasks 1, 2, 3)
+func (adapter *GoogleGeminiArtificialIntelligenceAdapter) AnalyzeCausality(ctx context.Context, text string, contextEvents string) (*causality.AnalysisResult, error) {
+	prompt := fmt.Sprintf(`
+        ROLE: Causal Oracle.
+        CONTEXT EVENTS: %v
+        TARGET TEXT: %s
+        TASK: Output JSON with neutral_headline, bridging_score, and causal_links.
+        
+        OUTPUT SCHEMA:
+        { "event_processing": { "original_headline": "String", "neutral_headline": "String", "emotional_score": Float (0-100), "bridging_score": Float (0.0-1.0), "key_facts": [], "causal_links": [] }, "ui_directives": { "node_color_hex": "String", "swimlane_assignment": "String" } }
+    `, contextEvents, text)
+
+	resp, err := adapter.model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini analysis failed: %w", err)
+	}
+
+	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
+		return nil, fmt.Errorf("no response from gemini")
+	}
+
+	var respText string
+	for _, part := range resp.Candidates[0].Content.Parts {
+		if txt, ok := part.(genai.Text); ok {
+			respText += string(txt)
+		}
+	}
+
+	// Clean JSON
+	respText = strings.TrimPrefix(respText, "```json")
+	respText = strings.TrimPrefix(respText, "```")
+	respText = strings.TrimSuffix(respText, "```")
+
+	var result causality.AnalysisResult
+	if err := json.Unmarshal([]byte(respText), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse analysis JSON: %w. Raw: %s", err, respText)
 	}
 
 	return &result, nil
